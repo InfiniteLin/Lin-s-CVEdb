@@ -2,13 +2,13 @@
 
 ## 1. 漏洞概览
 
-| 项目 | 详情 |
-|------|------|
-| **漏洞类型** | 栈缓冲区溢出 (Stack Buffer Overflow) |
-| **风险等级** | 🔴 **高危 (Critical)** |
+| 项目        | 详情                                    |
+| --------- | ------------------------------------- |
+| **漏洞类型**  | 栈缓冲区溢出 (Stack Buffer Overflow)        |
+| **风险等级**  | 🔴 **高危 (Critical)**                  |
 | **受影响函数** | `formSetWAN_Wizard52` (地址：`0x44a940`) |
-| **触发条件** | HTTP POST 请求中超长的 `curTime` 参数 |
-| **危险函数** | `sprintf` (地址：`0x44ac84`) |
+| **触发条件**  | HTTP POST 请求中超长的 `curTime` 参数         |
+| **危险函数**  | `sprintf` (地址：`0x44ac84`)             |
 
 ---
 
@@ -21,13 +21,13 @@ int __fastcall formSetWAN_Wizard52(_DWORD *a1)
 {
   char v29[200];      // [sp+18h] 栈缓冲区
   char v30[200];      // [sp+E0h] 栈缓冲区 ← 目标缓冲区
-  
+
   // 获取用户输入
   v3 = websGetVar(a1, "curTime", ...);
-  
+
   // ⚠️ 危险点：sprintf 无长度检查
   sprintf(v30, "/Basic/Wizard_WAN_complete.asp?t=%s", v3);
-  
+
   return websRedirect(a1, v30);
 }
 ```
